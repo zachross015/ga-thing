@@ -139,7 +139,12 @@ def mutate(network):
     pass
 
 def next_generation(networks):
-    pass
+    # 3 tournament selection
+    mFit = network1.fitness
+    if (network2.fitness > mFit):
+        mFit = network2.fitness
+    if (network3.fitness > mFit):
+        mFit = network3.fitness
 
 
 #################
