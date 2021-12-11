@@ -27,7 +27,20 @@ BATCH_SIZE    = 1000 # Training examples per epoch
 VERBOSE       = 0    # 0 for no output, 1 for extensive, 2 for some other option
 
 POPULATION_SIZE = 10
-NUM_GEN         = 0  # Definitely change this at some point lol
+NUM_GEN         = 10
+
+P_CROSS = 0.1
+
+P_MUT = 1.0 / float(POPULATION_SIZE)
+P_MUT_LAYERS = 0.2
+P_MUT_WIDTHS = 0.2
+P_MUT_ACTIVATIONS = 0.2
+P_MUT_LEARNING = 0.1
+
+
+# DATASET CONSTANTS
+(X, y), (_, _) = mnist.load_data()
+X = np.reshape(X, (60000, 28 * 28, 1))
 
 
 #######################
@@ -69,7 +82,8 @@ class NeuralNetwork:
         if self.alpha == None:
             self.alpha = npr.random_sample([1]) / 10.0
 
-        self.fitness = None
+        if self.fitness == None:
+            self.calculate_fitness()
 
     def __str__(self):
         string = "Neural Network with dimensions {} x {}\n".format(self.input_dim, self.output_dim)
@@ -105,7 +119,7 @@ class NeuralNetwork:
         self.model = KerasClassifier(build_fn=self.__compile__, epochs=EPOCHS,
                 batch_size=BATCH_SIZE, verbose=VERBOSE)
 
-    def calculate_fitness(self, X, y):
+    def calculate_fitness(self):
         """ Tests the fitted model against a dataset and generates the relevant
         metrics
         """
@@ -114,11 +128,10 @@ class NeuralNetwork:
         
         # Find overall accuracy and the elapsed time
         start = time.time()
-        results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
+        self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
                 error_score='raise')
         end = time.time()
-        self.fitness = results.mean() / (end - start)
-        return self.fitness
+        self.fitness = self.results.mean() / (end - start)
         
 
 ######################
@@ -130,33 +143,90 @@ def initialize_population():
     return [NeuralNetwork(28 * 28, 10) for _ in range(POPULATION_SIZE)]
 
 def select_parents(networks):
-    pass
+    gen = []
+
+    fitness_reduce = lambda x: x.fitness
+    # Generate the list of tournament selected parents
+    for _ in range(POPULATION_SIZE):
+        parents = np.random.choice(networks, 3, replace=False)
+        selected_idx = np.argmax(np.vectorize(fitness_reduce)(parents))
+        gen.append(parents[selected_idx])
+
+    return np.array(gen)
 
 def crossover(network1, network2):
-    pass
+    return (network1, network2)
 
 def mutate(network):
-    pass
+    #20 percent chance of bit flipping
+    if npr.random_sample() < P_MUT_LAYERS:
+        #3 bits get possibly flipped
+        for x in range(3):
+            network.active_layers[npr.randint(0,MAX_DEPTH)] = (npr.randint(0, 2) == 1)
+
+    #20 percent chance of mutation in layer widths
+    if npr.random_sample() < P_MUT_WIDTHS:
+        for x in range(3):
+            upDown = npr.randint(0,2)
+            if upDown == 1:
+                rInt = npr.randint(0,MAX_DEPTH)
+                if network.layer_widths[rInt] + 2 < MAX_DEPTH:
+                    network.layer_widths[rInt] += npr.randint(0, 2)
+                else :
+                    network.layer_widths[rInt] -= npr.randint(0, 2)
+            else:
+                rInt = npr.randint(0,MAX_DEPTH)
+                if network.layer_widths[rInt] - 2 < MAX_DEPTH:
+                    network.layer_widths[rInt] -= npr.randint(0, 2)
+                else :
+                    network.layer_widths[rInt] += npr.randint(0, 2)
+
+    #20 percent chance of mutation in activation function
+    if npr.random_sample() < P_MUT_ACTIVATIONS:
+        for x in range(3):
+            rInt = npr.randint(0,MAX_DEPTH)
+            network.activations[rInt] = npr.choice(ACTIVATIONS)
+
+    #10 percent chance of learning rate being mutated, uniform mutation which will completely 
+    #reassign learning rate so there is a smaller chance of this  
+    if npr.random_sample() < P_MUT_LEARNING:
+        network.alpha = npr.random_sample([1]) / 10.0
+
+    return network
 
 def next_generation(networks):
-    # 3 tournament selection
-    mFit = network1.fitness
-    if (network2.fitness > mFit):
-        mFit = network2.fitness
-    if (network3.fitness > mFit):
-        mFit = network3.fitness
 
+    parents = select_parents(networks)
+    survivors = []
+
+    # Run crossover / mutation on survivors
+    for i in range(int(POPULATION_SIZE / 2)):
+        (c1, c2) = crossover(parents[i], parents[i + 1])
+        survivors.append(mutate(c1))
+        survivors.append(mutate(c2))
+
+    return np.array(survivors)
+
+def generate_statistics(population):
+    fitness_reduce = np.vectorize(lambda x: x.fitness)
+    population_fitnesses = fitness_reduce(population)
+    return (
+            np.min(population_fitnesses), 
+            np.mean(population_fitnesses),
+            np.max(population_fitnesses),
+            np.std(population_fitnesses),
+            )
+    
 
 #################
 # MARK: TESTING #
 #################
 
 
-# Initialize the data sets. X is the input data while y is the output.
-(X, y), (_, _) = mnist.load_data()
-X = np.reshape(X, (60000, 28 * 28, 1))
-
 population = initialize_population()
+print(generate_statistics(population))
 # Do whatever the hell you want here
-
+for _ in range(NUM_GEN):
+    population = next_generation(population)
+    print(generate_statistics(population))
 
