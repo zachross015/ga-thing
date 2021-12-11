@@ -133,7 +133,31 @@ def select_parents(networks):
     pass
 
 def crossover(network1, network2):
-    pass
+    # depth
+    for i in range(MAX_DEPTH):
+        a = npr.randint(0, 2)
+        if a == 1:
+            temp = network1.active_layers[i]
+            network1.active_layers[i] = network2.active_layers[i]
+            network2.active_layers[i] = temp
+
+    # width
+    cp = npr.randint(0, MAX_HEIGHT)
+    n1_new = np.append(network1.layer_width[:cp], network2.layer_width[cp:])
+    n2_new = np.append(network2.layer_width[:cp], network1.layer_width[cp:])
+
+    # activation
+
+    cp = npr.randint(0, 9)
+    n1_act = np.append(n1_new.activations[:cp], n2_new.activations[cp:])
+    n2_act = np.append(n2_new.activations[:cp], n1_new.activations[cp:])
+
+    # alpha
+
+    n1_act.alpha = (n1_act.alpha + n2_act.alpha) * .5
+    n2_act.alpha = (n1_act.alpha + n2_act.alpha) * .5
+
+    return n1_act, n2_act
 
 def mutate(network):
     pass
