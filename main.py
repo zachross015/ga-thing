@@ -20,16 +20,16 @@ from sklearn.model_selection import cross_val_score
 
 MAX_DEPTH     = 50   # Number of layers possible
 MAX_HEIGHT    = 50   # Maximum amount of nodes per layer
-NUM_FOLDS     = 2    # Number of trials that should be run
+NUM_FOLDS     = 4    # Number of trials that should be run
 EPOCHS        = 10   # Depth of training in each trial 
 BATCH_SIZE    = 1000 # Training examples per epoch
 
-POPULATION_SIZE = 10
+POPULATION_SIZE = 30
 NUM_GEN         = 20
 
-P_CROSS = 0.1
+P_CROSS = 5.0 / float(POPULATION_SIZE)
 
-P_MUT = 1.0 / float(POPULATION_SIZE)
+P_MUT = 5.0 / float(POPULATION_SIZE)
 P_MUT_LAYERS = 0.2
 P_MUT_WIDTHS = 0.2
 P_MUT_ACTIVATIONS = 0.2
@@ -128,15 +128,16 @@ class NeuralNetwork:
         """ Tests the fitted model against a dataset and generates the relevant
         metrics
         """
-        self.__build__()
-        kfold = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True)
-        
-        # Find overall accuracy and the elapsed time
-        start = time.time()
-        self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
-                error_score='raise')
-        end = time.time()
-        self.fitness = self.results.mean() # / (end - start)
+        if self.fitness is not None:
+            self.__build__()
+            kfold = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True)
+            
+            # Find overall accuracy and the elapsed time
+            start = time.time()
+            self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
+                    error_score='raise')
+            end = time.time()
+            self.fitness = self.results.mean() # / (end - start)
         
 
 ######################
@@ -160,6 +161,9 @@ def select_parents(networks):
     return np.array(gen)
 
 def crossover(network1, network2):
+
+    if npr.random_sample() >= P_CROSS:
+        return (network1, network2)
 
     n1_lay = network1.active_layers
     n2_lay = network2.active_layers
