@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import numpy.random as npr
+import copy
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense
@@ -14,20 +15,17 @@ from sklearn.model_selection import cross_val_score
 ###################
 
 
-ACTIVATIONS   = ['relu', 'sigmoid', 'softmax', 'softplus', 'softsign', 'tanh', 'selu', 'elu', 'exponential']
-LOSS_FUNCTION = "categorical_crossentropy"
-OPTIMIZER     = "adam"
-METRICS       = ["accuracy"]
+# CONFIGURATION CONSTANTS
+# These are the ones you're going to want to mess around with
 
 MAX_DEPTH     = 50   # Number of layers possible
 MAX_HEIGHT    = 50   # Maximum amount of nodes per layer
 NUM_FOLDS     = 2    # Number of trials that should be run
 EPOCHS        = 10   # Depth of training in each trial 
 BATCH_SIZE    = 1000 # Training examples per epoch
-VERBOSE       = 0    # 0 for no output, 1 for extensive, 2 for some other option
 
 POPULATION_SIZE = 10
-NUM_GEN         = 10
+NUM_GEN         = 20
 
 P_CROSS = 0.1
 
@@ -39,6 +37,14 @@ P_MUT_LEARNING = 0.1
 
 
 # DATASET CONSTANTS
+# Don't need to mess with these 
+
+ACTIVATIONS   = ['relu', 'sigmoid', 'softmax', 'softplus', 'softsign', 'tanh', 'selu', 'elu', 'exponential']
+LOSS_FUNCTION = "categorical_crossentropy"
+OPTIMIZER     = "adam"
+METRICS       = ["accuracy"]
+VERBOSE       = 0    # 0 for no output, 1 for extensive, 2 for some other option
+
 (X, y), (_, _) = mnist.load_data()
 X = np.reshape(X, (60000, 28 * 28, 1))
 
@@ -61,29 +67,28 @@ class NeuralNetwork:
 
         # Take the given active layers, otherwise generate random ones
         self.active_layers = active_layers
-        if active_layers == None:
+        if active_layers is None:
             self.active_layers = (npr.randint(0, 2, MAX_DEPTH) == 1)
 
         # Take the given layer widths, otherwise generate random ones
         self.layer_widths = layer_widths
-        if self.layer_widths == None:
+        if self.layer_widths is None:
             self.layer_widths = npr.randint(2, MAX_HEIGHT, MAX_DEPTH)
 
         # Take the given activations, otherwise generate random ones from the
         # list provided above
         self.activations = activations
-        if self.activations == None:
+        if self.activations is None:
             self.activations = np.array([npr.choice(ACTIVATIONS) for _ in
                 range(MAX_DEPTH)])
 
         # Take the given learning rate, otherwise generate a random one between
         # 0 and 1
         self.alpha = alpha
-        if self.alpha == None:
+        if self.alpha is None:
             self.alpha = npr.random_sample([1]) / 10.0
 
-        if self.fitness == None:
-            self.calculate_fitness()
+        self.calculate_fitness()
 
     def __str__(self):
         string = "Neural Network with dimensions {} x {}\n".format(self.input_dim, self.output_dim)
@@ -131,7 +136,7 @@ class NeuralNetwork:
         self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
                 error_score='raise')
         end = time.time()
-        self.fitness = self.results.mean() / (end - start)
+        self.fitness = self.results.mean() # / (end - start)
         
 
 ######################
@@ -155,14 +160,56 @@ def select_parents(networks):
     return np.array(gen)
 
 def crossover(network1, network2):
-    return (network1, network2)
+
+    n1_lay = network1.active_layers
+    n2_lay = network2.active_layers
+
+    # depth
+    for i in range(MAX_DEPTH):
+        a = npr.randint(0, 2)
+        if a == 1:
+            temp = n1_lay[i]
+            n1_lay[i] = n2_lay[i]
+            n2_lay[i] = temp
+
+    # width
+    cp = npr.randint(0, MAX_HEIGHT)
+    n1_wid = np.append(network1.layer_widths[:cp], network2.layer_widths[cp:])
+    n2_wid = np.append(network2.layer_widths[:cp], network1.layer_widths[cp:])
+
+    # activation
+
+    cp = npr.randint(0, len(ACTIVATIONS))
+    n1_act = np.append(network1.activations[:cp], network2.activations[cp:])
+    n2_act = np.append(network2.activations[:cp], network1.activations[cp:])
+
+    # alpha
+
+    n1_alpha = (network1.alpha + network2.alpha) * .5
+    n2_alpha = (network1.alpha + network2.alpha) * .5
+
+    n1 = NeuralNetwork(28 * 28, 10, 
+                       active_layers=n1_lay, 
+                       layer_widths=n1_wid, 
+                       activations=n1_act, 
+                       alpha=n1_alpha)
+    n2 = NeuralNetwork(28 * 28, 10, 
+                       active_layers=n2_lay, 
+                       layer_widths=n2_wid, 
+                       activations=n2_act, 
+                       alpha=n1_alpha)
+
+    return n1, n2
 
 def mutate(network):
+
+    ntwk = copy.deepcopy(network)
+
     #20 percent chance of bit flipping
     if npr.random_sample() < P_MUT_LAYERS:
         #3 bits get possibly flipped
         for x in range(3):
-            network.active_layers[npr.randint(0,MAX_DEPTH)] = (npr.randint(0, 2) == 1)
+            ntwk.active_layers[npr.randint(0,MAX_DEPTH)] = (npr.randint(0, 2) == 1)
 
     #20 percent chance of mutation in layer widths
     if npr.random_sample() < P_MUT_WIDTHS:
@@ -170,27 +217,27 @@ def mutate(network):
             upDown = npr.randint(0,2)
             if upDown == 1:
                 rInt = npr.randint(0,MAX_DEPTH)
-                if network.layer_widths[rInt] + 2 < MAX_DEPTH:
-                    network.layer_widths[rInt] += npr.randint(0, 2)
+                if ntwk.layer_widths[rInt] + 2 < MAX_DEPTH:
+                    ntwk.layer_widths[rInt] += npr.randint(0, 2)
                 else :
-                    network.layer_widths[rInt] -= npr.randint(0, 2)
+                    ntwk.layer_widths[rInt] -= npr.randint(0, 2)
             else:
                 rInt = npr.randint(0,MAX_DEPTH)
-                if network.layer_widths[rInt] - 2 < MAX_DEPTH:
-                    network.layer_widths[rInt] -= npr.randint(0, 2)
+                if ntwk.layer_widths[rInt] - 2 < MAX_DEPTH:
+                    ntwk.layer_widths[rInt] -= npr.randint(0, 2)
                 else :
-                    network.layer_widths[rInt] += npr.randint(0, 2)
+                    ntwk.layer_widths[rInt] += npr.randint(0, 2)
 
     #20 percent chance of mutation in activation function
     if npr.random_sample() < P_MUT_ACTIVATIONS:
         for x in range(3):
             rInt = npr.randint(0,MAX_DEPTH)
-            network.activations[rInt] = npr.choice(ACTIVATIONS)
+            ntwk.activations[rInt] = npr.choice(ACTIVATIONS)
 
     #10 percent chance of learning rate being mutated, uniform mutation which will completely 
     #reassign learning rate so there is a smaller chance of this  
     if npr.random_sample() < P_MUT_LEARNING:
-        network.alpha = npr.random_sample([1]) / 10.0
+        ntwk.alpha = npr.random_sample([1]) / 10.0
 
     return network
 
@@ -207,26 +254,31 @@ def next_generation(networks):
 
     return np.array(survivors)
 
-def generate_statistics(population):
+def print_statistics(population):
     fitness_reduce = np.vectorize(lambda x: x.fitness)
     population_fitnesses = fitness_reduce(population)
-    return (
+    print("{:.2} & {:.2} & {:.2} & {:.2} \\\\ \\hline".format(
             np.min(population_fitnesses), 
             np.mean(population_fitnesses),
             np.max(population_fitnesses),
             np.std(population_fitnesses),
             )
+        )
     
 
 #################
 # MARK: TESTING #
 #################
 
+print("\\begin{tabular}{|c|c|c|c|}")
+print("\\hline Min & Average & Max & STD \\\\ \\hline")
 
 population = initialize_population()
-print(generate_statistics(population))
+print_statistics(population)
 # Do whatever the hell you want here
 for _ in range(NUM_GEN):
     population = next_generation(population)
-    print(generate_statistics(population))
+    print_statistics(population)
+
+print("\\end{tabular}")
 
