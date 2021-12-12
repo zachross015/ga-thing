@@ -2,6 +2,8 @@ import time
 import numpy as np
 import numpy.random as npr
 import copy
+import warnings
+from functools import total_ordering
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense
@@ -25,7 +27,7 @@ EPOCHS        = 10   # Depth of training in each trial
 BATCH_SIZE    = 1000 # Training examples per epoch
 
 POPULATION_SIZE = 30
-NUM_GEN         = 20
+NUM_GEN         = 4
 
 P_CROSS = 5.0 / float(POPULATION_SIZE)
 
@@ -54,6 +56,7 @@ X = np.reshape(X, (60000, 28 * 28, 1))
 #######################
 
 
+@total_ordering
 class NeuralNetwork:
 
     def __init__(self, input_dim, output_dim, active_layers=None, layer_widths=None, activations=None, alpha=None):
@@ -137,6 +140,24 @@ class NeuralNetwork:
                 error_score='raise')
         end = time.time()
         self.fitness = self.results.mean() # / (end - start)
+
+    def __lt__(self, other):
+        return self.fitness < other.fitness
+
+    def __le__(self, other):
+        return self.fitness <= other.fitness
+
+    def __eq__(self, other):
+        return self.fitness == other.fitness
+
+    def __ne__(self, other):
+        return self.fitness != other.fitness
+
+    def __gt__(self, other):
+        return self.fitness > other.fitness
+
+    def __ge__(self, other):
+        return self.fitness >= other.fitness
         
 
 ######################
@@ -150,11 +171,10 @@ def initialize_population():
 def select_parents(networks):
     gen = []
 
-    fitness_reduce = lambda x: x.fitness
     # Generate the list of tournament selected parents
     for _ in range(POPULATION_SIZE):
         parents = np.random.choice(networks, 3, replace=False)
-        selected_idx = np.argmax(np.vectorize(fitness_reduce)(parents))
+        selected_idx = np.argmax(parents)
         gen.append(parents[selected_idx])
 
     return np.array(gen)
@@ -258,13 +278,11 @@ def next_generation(networks):
     return np.array(survivors)
 
 def print_statistics(population):
-    fitness_reduce = np.vectorize(lambda x: x.fitness)
-    population_fitnesses = fitness_reduce(population)
     print("{:.2} & {:.2} & {:.2} & {:.2} \\\\ \\hline".format(
-            np.min(population_fitnesses), 
-            np.mean(population_fitnesses),
-            np.max(population_fitnesses),
-            np.std(population_fitnesses),
+            np.min(population).fitness, 
+            np.mean(np.array([x.fitness for x in population])),
+            np.max(population).fitness,
+            np.std(np.array([x.fitness for x in population])),
             )
         )
     
@@ -273,15 +291,29 @@ def print_statistics(population):
 # MARK: TESTING #
 #################
 
-print("\\begin{tabular}{|c|c|c|c|}")
-print("\\hline Min & Average & Max & STD \\\\ \\hline")
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
 
-population = initialize_population()
-print_statistics(population)
-# Do whatever the hell you want here
-for _ in range(NUM_GEN):
-    population = next_generation(population)
+    print("Configuration")
+    print(f"Max Depth: {MAX_DEPTH} | Max Width: {MAX_HEIGHT} | Population Size: "
+          f"{POPULATION_SIZE} | Number of Generations: {NUM_GEN}"
+          )
+
+    print("\\begin{tabular}{|c|c|c|c|}")
+    print("\\hline Min & Average & Max & STD \\\\ \\hline")
+
+    population = initialize_population()
     print_statistics(population)
+    best_ind = np.max(population)
+    # Do whatever the hell you want here
+    for i in range(NUM_GEN):
+        population = next_generation(population)
+        print_statistics(population)
 
-print("\\end{tabular}")
+        best_in_round = np.max(population)
+        if best_in_round > best_ind:
+            best_ind = best_in_round
 
+
+    print("\\end{tabular}")
+    print(best_ind)
