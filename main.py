@@ -128,16 +128,15 @@ class NeuralNetwork:
         """ Tests the fitted model against a dataset and generates the relevant
         metrics
         """
-        if self.fitness is not None:
-            self.__build__()
-            kfold = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True)
-            
-            # Find overall accuracy and the elapsed time
-            start = time.time()
-            self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
-                    error_score='raise')
-            end = time.time()
-            self.fitness = self.results.mean() # / (end - start)
+        self.__build__()
+        kfold = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True)
+        
+        # Find overall accuracy and the elapsed time
+        start = time.time()
+        self.results = cross_val_score(self.model, X, y, cv=kfold, verbose=VERBOSE,
+                error_score='raise')
+        end = time.time()
+        self.fitness = self.results.mean() # / (end - start)
         
 
 ######################
